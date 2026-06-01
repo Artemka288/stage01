@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Your Ticket</title>
+    
+    <link rel="manifest" href="manifest.json">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Stagecoach">
+    <link rel="apple-touch-icon" href="icon.png">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            background-color: #0c1a2b; 
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Хакерский экран загрузки и активации */
+        #gyro-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            overflow: hidden;
+        }
+
+        /* Холст для падающего кода матрицы */
+        #matrix-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            opacity: 0.6;
+        }
+
+        /* Контент поверх матрицы */
+        .overlay-content {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(0,0,0,0) 20%, rgba(0,0,0,0.8) 80%);
+        }
+
+        /* Текст загрузки в стиле терминала */
+        #loading-text {
+            color: #00ff33;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.5rem;
+            font-weight: bold;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px #00ff33;
+            animation: pulse 1.2s infinite ease-in-out;
+        }
+
+        /* Кнопка активации в стиле терминала */
+        #activate-btn {
+            display: none;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00ff33;
+            color: #00ff33;
+            padding: 16px 32px;
+            font-size: 1.3rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: 'Courier New', Courier, monospace;
+            box-shadow: 0 0 15px rgba(0, 255, 51, 0.4), inset 0 0 10px rgba(0, 255, 51, 0.2);
+            text-shadow: 0 0 5px #00ff33;
+            transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+            animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        #activate-btn:active {
+            transform: scale(0.95);
+            background: rgba(0, 255, 51, 0.2);
+            box-shadow: 0 0 25px rgba(0, 255, 51, 0.8), inset 0 0 15px rgba(0, 255, 51, 0.4);
+        }
+
+        /* Надпись в правом нижнем углу */
+        .credit-badge {
+            position: absolute;
+            right: 16px;
+            bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            color: rgba(0, 255, 51, 0.7);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.8rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            text-shadow: 0 0 5px rgba(0, 255, 51, 0.5);
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .credit-badge svg {
+            width: 12px;
+            height: 12px;
+            fill: #ff0055;
+            filter: drop-shadow(0 0 3px #ff0055);
+            animation: heartBeat 1.2s infinite cubic-bezier(0.215, 0.610, 0.355, 1);
+        }
+
+        @keyframes heartBeat {
+            0%, 100% { transform: scale(1); }
+            25% { transform: scale(1.15); }
+            45% { transform: scale(1.05); }
+            60% { transform: scale(1.2); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.3; text-shadow: 0 0 5px #00ff33; }
+            50% { opacity: 1; text-shadow: 0 0 15px #00ff33; }
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* === Оригинальные стили билета === */
+        .header {
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            position: relative;
+            background-color: #0c1a2b;
+            padding-top: env(safe-area-inset-top, 0px);
+            height: 54px; 
+            box-sizing: content-box;
+            color: white;
+            font-size: 1.15rem;
+            font-weight: 600;
+            z-index: 10;
+        }
+
+        .header-title {
+            margin-bottom: 15px; 
+        }
+
+        .settings-btn {
+            position: absolute;
+            left: 16px;
+            bottom: 12px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 11;
+            transition: transform 0.3s ease;
+        }
+
+        .settings-btn.active {
+            transform: rotate(45deg);
+        }
+
+        .settings-btn svg {
+            width: 22px;
+            height: 22px;
+            fill: rgba(255, 255, 255, 0.9);
+        }
+
+        .settings-menu {
+            position: absolute;
+            top: calc(54px + env(safe-area-inset-top, 0px));
+            left: 12px;
+            background-color: #111e2f;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            width: 250px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            z-index: 100;
+            opacity: 0;
+            transform: translateY(-10px);
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            overflow: hidden;
+        }
+
+        .settings-menu.open {
+            opacity: 1;
+            transform: translateY(4px);
+            pointer-events: auto;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            color: #ffffff;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .menu-item:active {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .menu-item svg {
+            width: 16px;
+            height: 16px;
+            margin-right: 12px;
+            fill: rgba(255, 255, 255, 0.7);
+            flex-shrink: 0;
+        }
+
+        .color-list {
+            max-height: 0;
+            overflow-y: auto;
+            transition: max-height 0.3s ease-out;
+            background-color: #0b1420;
+        }
+
+        .color-list.show {
+            max-height: 200px; 
+        }
+
+        .color-option {
+            display: flex;
+            align-items: center;
+            padding: 11px 16px 11px 44px;
+            color: #e2e8f0;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .color-option:active {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .color-preview {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .close-btn {
+            position: absolute;
+            right: 16px;
+            bottom: 12px;
+            width: 28px;
+            height: 28px;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+
+        .ticket-container {
+            flex: 1;
+            background-color: #1d70cc;
+            display: flex;
+            flex-direction: column;
+            padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px)) 12px;
+            position: relative;
+        }
+
+        .ticket-body {
+            background-color: #f7f9fa;
+            border-radius: 4px;
+            flex: 0 0 auto; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 14px 20px 14px; 
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            overflow: hidden;
+            margin-top: 14px;
+        }
+
+        .pill-overflow-wrapper {
+            width: calc(100% + 14px); 
+            margin-left: -14px; 
+            overflow: hidden;
+            margin-top: 12px;
+            margin-bottom: 24px;
+        }
+
+        .user-info-pill {
+            width: 90%; 
+            background-color: #1d70cc;
+            border-top-right-radius: 100px;
+            border-bottom-right-radius: 100px;
+            border-top-left-radius: 0px;
+            border-bottom-left-radius: 0px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+            font-weight: 700;
+            font-size: 1.2rem;
+            padding: 10px 20px 10px 24px; 
+            letter-spacing: -0.2px;
+        }
+
+        .user-name {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .icon-student {
+            display: inline-block;
+            width: 16px;
+            height: 10px;
+            border-left: 2px solid white;
+            border-right: 2px solid white;
+            border-bottom: 2px solid white;
+            position: relative;
+            margin-top: 6px;
+        }
+        .icon-student::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            left: -4px;
+            width: 20px;
+            height: 6px;
+            background-color: #1d70cc;
+            border: 2px solid white;
+            transform: rotate(-15deg) skewX(-20deg);
+            box-sizing: border-box;
+        }
+
+        .qr-container {
+            width: 240px;
+            height: 240px;
+            margin-bottom: 25px;
+            background: white;
+            padding: 4px;
+            box-shadow: inset 0 0 0 1px #e5e7eb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .qr-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
+        .ticket-title {
+            font-size: 1.65rem;
+            font-weight: 600;
+            color: #232c3d;
+            text-align: center;
+            line-height: 1.25;
+            margin-bottom: 18px;
+            letter-spacing: -0.3px;
+        }
+
+        .valid-from {
+            font-size: 0.95rem;
+            color: #4b5563;
+            margin-bottom: 25px;
+        }
+
+        .valid-from strong {
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .ribbon-wrapper {
+            width: 100%;
+            position: relative;
+            height: 75px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .moving-ribbon {
+            background: #f1b32c; 
+            color: #111827;
+            font-size: 2.1rem;
+            font-weight: 700;
+            height: 62px;
+            width: 145%; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transform: rotate(-14deg);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+            position: absolute;
+            will-change: transform;
+            transition: transform 0.12s ease-out, background-color 0.3s ease; 
+            overflow: hidden;
+        }
+
+        .clock-zone-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            width: 100%;
+        }
+
+        #london-clock {
+            position: relative;
+            z-index: 5;
+            white-space: nowrap;
+            transition: opacity 0.5s ease-in-out;
+            opacity: 1;
+        }
+
+        .bubble-mask-area {
+            position: absolute;
+            top: -10px;
+            bottom: -10px;
+            width: 300px; 
+            left: 50%;
+            transform: translateX(-50%);
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .bubble {
+            position: absolute;
+            top: 0;
+            left: 0;
+            border-radius: 50%;
+            pointer-events: none;
+            will-change: transform;
+        }
+
+        .bubble-default {
+            background-color: rgba(255, 255, 255, 0.32);
+        }
+
+        .bubble-contrast {
+            background-color: rgba(255, 255, 255, 0.50);
+        }
+
+        .expires-container {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 290px;
+            font-size: 1.05rem;
+            color: #1f2937;
+            margin-bottom: 25px;
+        }
+
+        .expires-time {
+            font-weight: 700;
+            color: #000000;
+        }
+
+        .serial-number {
+            background-color: #e8edf5;
+            color: #374151;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 10px 16px;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 320px;
+            text-align: center;
+            letter-spacing: 0.1px;
+            margin-bottom: 25px; 
+        }
+
+        .more-details {
+            color: #01693f;
+            font-size: 1.05rem;
+            font-weight: 600;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 0px;
+            margin-bottom: 15px; 
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gyro-overlay">
+        <canvas id="matrix-canvas"></canvas>
+        <div class="overlay-content">
+            <div id="loading-text">LOADING...</div>
+            <button id="activate-btn">Click to activate</button>
+        </div>
+        <div class="credit-badge">
+            made with love
+            <svg viewBox="0 0 32 32">
+                <path d="M16 28.21s-12-7.44-12-14.79A6.42 6.42 0 0 1 10.42 7c3.42 0 5.58 2.5 5.58 2.5s2.17-2.5 5.58-2.5A6.42 6.42 0 0 1 28 13.42c0 7.35-12 14.79-12 14.79z"/>
+            </svg>
+        </div>
+    </div>
+
+    <div class="header">
+        <div class="settings-btn" id="settings-toggle">
+            <svg viewBox="0 0 24 24">
+                <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l-.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3-1.57-3-3.5s1.07-3.5 3-3.5 3 1.57 3 3.5-1.07 3.5-3 3.5z"/>
+            </svg>
+        </div>
+
+        <span class="header-title">Your Ticket</span>
+        <div class="close-btn">✕</div>
+    </div>
+
+    <div class="settings-menu" id="settings-dropdown">
+        <div class="menu-item" id="btn-toggle-colors">
+            <svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.75-.39-1.03-.23-.27-.38-.64-.38-1.04 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+            Изменить цвет
+        </div>
+        
+        <div class="color-list" id="color-options-list">
+            <div class="color-option" data-color="#f1b32c">
+                <div class="color-preview" style="background-color: #f1b32c;"></div>
+                Желтый
+            </div>
+            <div class="color-option" data-color="#6c757d">
+                <div class="color-preview" style="background-color: #6c757d;"></div>
+                Серый
+            </div>
+            <div class="color-option" data-color="#d63384">
+                <div class="color-preview" style="background-color: #d63384;"></div>
+                Розовый
+            </div>
+            <div class="color-option" data-color="#4caf50">
+                <div class="color-preview" style="background-color: #4caf50;"></div>
+                Зеленый
+            </div>
+            <div class="color-option" data-color="#4ba3c3">
+                <div class="color-preview" style="background-color: #4ba3c3;"></div>
+                Голубой
+            </div>
+        </div>
+
+        <div class="menu-item" id="btn-change-text">
+            <svg viewBox="0 0 24 24"><path d="M14.06 9.02l.92.92L5.92 19H5v-.92l9.06-9.06M17.66 3c-.25 0-.51.1-.7.29l-1.83 1.83 3.75 3.75 1.83-1.83c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29zm-3.6 3.19L3 17.25V21h3.75L17.81 9.94l-3.75-3.75z"/></svg>
+            Изменить текст
+        </div>
+
+        <div class="menu-item" id="btn-toggle-time-text">
+            <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-13.4-10.4 8.43 8.43 0 0 1 6.2-2.4 8.5 8.5 0 0 1 8.1 9zm-8.5-6.5A6.5 6.5 0 1 0 19 11.5 6.51 6.51 0 0 0 12.5 5z"/></svg>
+            <span id="toggle-text-label">Включить текст после времени</span>
+        </div>
+    </div>
+
+    <div class="ticket-container" id="main-container">
+        
+        <div class="ticket-body">
+            
+            <div class="pill-overflow-wrapper">
+                <div class="user-info-pill" id="user-pill">
+                    <span class="user-name">
+                        <span class="icon-student" id="hat-icon"></span> <span id="display-name">Petro Poroshenko</span>
+                    </span>
+                    <span>£444.00</span>
+                </div>
+            </div>
+
+            <div class="qr-container">
+                <img class="qr-image" src="qr.jpg" alt="QR Code">
+            </div>
+
+            <div class="ticket-title">
+                2025/26 South West<br>Termrider Summer
+            </div>
+
+            <div class="valid-from">
+                Valid from: <strong>00:00, 19 Apr 2026</strong>
+            </div>
+
+            <div class="ribbon-wrapper">
+                <div class="moving-ribbon" id="ticket-ribbon">
+                    <div class="clock-zone-container">
+                        <span id="london-clock">--:--</span>
+                        <div class="bubble-mask-area" id="bubble-mask"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="expires-container">
+                <span>Ticket expires in</span>
+                <span class="expires-time">52d : 0h : 42m</span>
+            </div>
+
+            <div class="serial-number">
+                11810-20260419201802666-7NWLC
+            </div>
+
+            <a href="#" class="more-details">More details ❯</a>
+        </div>
+    </div>
+
+    <script>
+        // === Эффект кода Матрицы ===
+        const canvas = document.getElementById('matrix-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        const matrixChars = "0123456789".split("");
+        const fontSize = 16;
+        let columns = canvas.width / fontSize;
+        let drops = Array(Math.floor(columns)).fill(1);
+
+        window.addEventListener('resize', () => {
+            columns = canvas.width / fontSize;
+            drops = Array(Math.floor(columns)).fill(1);
+        });
+
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#00ff33'; 
+            ctx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = matrixChars[Math.floor(Math.random() * matrixChars.length)];
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i] += 1.5; 
+            }
+        }
+        
+        let matrixInterval = setInterval(drawMatrix, 20); 
+
+        // === Инициализация экрана загрузки и активации ===
+        window.addEventListener('DOMContentLoaded', () => {
+            const overlay = document.getElementById('gyro-overlay');
+            const loadingText = document.getElementById('loading-text');
+            const activateBtn = document.getElementById('activate-btn');
+
+            setTimeout(() => {
+                loadingText.style.display = 'none';
+                activateBtn.style.display = 'block';
+            }, 1200);
+
+            function hideOverlay() {
+                overlay.style.opacity = '0';
+                overlay.style.transform = 'scale(1.05)';
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    clearInterval(matrixInterval); 
+                }, 500);
+            }
+
+            activateBtn.addEventListener('click', () => {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission()
+                        .then(response => {
+                            if (response === 'granted') {
+                                window.addEventListener('deviceorientation', handleOrientation);
+                            }
+                            hideOverlay();
+                        })
+                        .catch(err => {
+                            console.error(err);
+                            hideOverlay();
+                        });
+                } else {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    hideOverlay();
+                }
+            });
+        });
+
+        // === Логика меню настроек ===
+        const settingsToggle = document.getElementById('settings-toggle');
+        const settingsDropdown = document.getElementById('settings-dropdown');
+        const btnToggleColors = document.getElementById('btn-toggle-colors');
+        const colorOptionsList = document.getElementById('color-options-list');
+        const ticketRibbon = document.getElementById('ticket-ribbon');
+
+        settingsToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            settingsToggle.classList.toggle('active');
+            settingsDropdown.classList.toggle('open');
+            if (!settingsDropdown.classList.contains('open')) {
+                colorOptionsList.classList.remove('show');
+            }
+        });
+
+        document.addEventListener('click', () => {
+            settingsToggle.classList.remove('active');
+            settingsDropdown.classList.remove('open');
+            colorOptionsList.classList.remove('show');
+        });
+
+        settingsDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        btnToggleColors.addEventListener('click', () => {
+            colorOptionsList.classList.toggle('show');
+        });
+
+        colorOptionsList.addEventListener('click', (e) => {
+            const option = e.target.closest('.color-option');
+            if (option) {
+                const targetColor = option.getAttribute('data-color');
+                ticketRibbon.style.backgroundColor = targetColor;
+                
+                settingsToggle.classList.remove('active');
+                settingsDropdown.classList.remove('open');
+                colorOptionsList.classList.remove('show');
+            }
+        });
+
+        document.getElementById('btn-change-text').addEventListener('click', () => {
+            const newName = prompt('Введите новое имя:', document.getElementById('display-name').textContent);
+            if (newName && newName.trim() !== "") {
+                document.getElementById('display-name').textContent = newName;
+            }
+            settingsToggle.classList.remove('active');
+            settingsDropdown.classList.remove('open');
+            colorOptionsList.classList.remove('show');
+        });
+
+        // === Новая логика циклической смены Времени и кастомного Слова ===
+        let isCustomTextEnabled = false;
+        let customWord = "";
+        let rotationTimeout = null;
+        let showTimeState = true; // true - показывает время, false - кастомный текст
+        const clockElement = document.getElementById('london-clock');
+        const toggleTextLabel = document.getElementById('toggle-text-label');
+
+        function getLondonTime() {
+            return new Date().toLocaleString("en-GB", {
+                timeZone: "Europe/London",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false
+            });
+        }
+
+        // Базовое непрерывное обновление контента в зависимости от текущего состояния
+        setInterval(() => {
+            if (!isCustomTextEnabled || showTimeState) {
+                clockElement.textContent = getLondonTime();
+            }
+        }, 1000);
+
+        function runRotationCycle() {
+            if (!isCustomTextEnabled) return;
+
+            if (showTimeState) {
+                // Сейчас показывается время. Оно стоит 2 секунды.
+                rotationTimeout = setTimeout(() => {
+                    if (!isCustomTextEnabled) return;
+                    // Плавно скрываем время
+                    clockElement.style.opacity = "0";
+                    
+                    setTimeout(() => {
+                        if (!isCustomTextEnabled) return;
+                        // Меняем текст на кастомное слово и плавно показываем
+                        showTimeState = false;
+                        clockElement.textContent = customWord;
+                        clockElement.style.opacity = "1";
+                        // Запускаем следующий шаг цикла
+                        runRotationCycle();
+                    }, 500); // Время анимации исчезновения
+
+                }, 2000);
+            } else {
+                // Сейчас показывается слово. Оно стоит 2 секунды.
+                rotationTimeout = setTimeout(() => {
+                    if (!isCustomTextEnabled) return;
+                    // Плавно скрываем слово
+                    clockElement.style.opacity = "0";
+                    
+                    setTimeout(() => {
+                        if (!isCustomTextEnabled) return;
+                        // Меняем текст обратно на время и плавно показываем
+                        showTimeState = true;
+                        clockElement.textContent = getLondonTime();
+                        clockElement.style.opacity = "1";
+                        // Запускаем следующий шаг цикла
+                        runRotationCycle();
+                    }, 500); // Время анимации исчезновения
+
+                }, 2000);
+            }
+        }
+
+        document.getElementById('btn-toggle-time-text').addEventListener('click', () => {
+            if (!isCustomTextEnabled) {
+                // Включение режима
+                const inputWord = prompt('Введите слово, которое будет появляться после времени:');
+                if (inputWord !== null && inputWord.trim() !== "") {
+                    customWord = inputWord.trim();
+                    isCustomTextEnabled = true;
+                    showTimeState = true;
+                    toggleTextLabel.textContent = 'выключить текст после времени';
+                    
+                    // Запуск бесконечного цикла анимации
+                    clockElement.style.opacity = "1";
+                    clockElement.textContent = getLondonTime();
+                    runRotationCycle();
+                }
+            } else {
+                // Выключение режима
+                isCustomTextEnabled = false;
+                clearTimeout(rotationTimeout);
+                showTimeState = true;
+                toggleTextLabel.textContent = 'Включить текст после времени';
+                
+                // Возвращаем дефолтное отображение времени
+                clockElement.style.opacity = "1";
+                clockElement.textContent = getLondonTime();
+            }
+            
+            // Закрываем меню настроек
+            settingsToggle.classList.remove('active');
+            settingsDropdown.classList.remove('open');
+            colorOptionsList.classList.remove('show');
+        });
+
+        // === Логика гироскопа ===
+        const BASE_ANGLE = -14; 
+
+        function handleOrientation(event) {
+            let gamma = event.gamma; 
+
+            if (gamma !== null) {
+                if (gamma > 40) gamma = 40;
+                if (gamma < -40) gamma = -40;
+
+                const currentTilt = BASE_ANGLE + (gamma * 0.45);
+                ticketRibbon.style.transform = `rotate(${currentTilt}deg)`;
+            }
+        }
+
+        // === Логика движения пузырьков ===
+        const TOTAL_BUBBLES = 55; 
+        const maskArea = document.getElementById('bubble-mask');
+
+        function startBubbles() {
+            const areaWidth = maskArea.offsetWidth;
+            const areaHeight = maskArea.offsetHeight;
+
+            for (let i = 0; i < TOTAL_BUBBLES; i++) {
+                const bubble = document.createElement('div');
+                let size;
+                
+                if (i < 10) { 
+                    size = Math.floor(Math.random() * 13) + 36; 
+                } else if (i >= 10 && i < 15) { 
+                    size = Math.floor(Math.random() * 3) + 4; 
+                } else { 
+                    size = Math.floor(Math.random() * 8) + 13; 
+                }
+
+                if (i % 10 === 0) {
+                    bubble.className = 'bubble bubble-contrast';
+                } else {
+                    bubble.className = 'bubble bubble-default';
+                }
+
+                bubble.style.width = `${size}px`;
+                bubble.style.height = `${size}px`;
+                maskArea.appendChild(bubble);
+
+                let currentX = Math.random() * areaWidth;
+                let currentY = Math.random() * areaHeight;
+
+                const baseSpeed = 0.1 + Math.random() * 0.6; 
+                let currentSpeed = baseSpeed;
+                
+                let angle = Math.random() * Math.PI * 2;
+                let dx = Math.cos(angle) * currentSpeed;
+                let dy = Math.sin(angle) * currentSpeed;
+
+                function move() {
+                    currentX += dx;
+                    currentY += dy;
+
+                    if (currentX <= 0) {
+                        currentX = 0;
+                        dx *= -1;
+                    } else if (currentX >= areaWidth) {
+                        currentX = areaWidth;
+                        dx *= -1;
+                    }
+
+                    if (currentY <= 0) {
+                        currentY = 0;
+                        dy *= -1;
+                    } else if (currentY >= areaHeight) {
+                        currentY = areaHeight;
+                        dy *= -1;
+                    }
+
+                    if (Math.random() < 0.015) {
+                        let newAngle = Math.random() * Math.PI * 2;
+                        currentSpeed = baseSpeed * (0.4 + Math.random() * 1.4);
+                        dx = Math.cos(newAngle) * currentSpeed;
+                        dy = Math.sin(newAngle) * currentSpeed;
+                    }
+
+                    bubble.style.transform = `translate3d(${currentX - size/2}px, ${currentY - size/2}px, 0)`;
+                    requestAnimationFrame(move);
+                }
+
+                move();
+            }
+        }
+
+        setTimeout(startBubbles, 200);
+    </script>
+
+</body>
+</html>
